@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Contador de hábitos</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gradient-to-br from-green-100 to-blue-100 min-h-screen p-4 flex items-center justify-center">
+  <div class="bg-white w-full max-w-2xl rounded-2xl shadow-2xl p-6 space-y-8">
+    <h1 class="text-2xl font-bold text-center text-gray-800">Seguimiento de hábitos</h1>
+
+    <!-- Formulario -->
+    <div class="flex flex-col sm:flex-row items-center gap-4">
+      <input id="inputHabito" type="text" placeholder="Ej. alcohol, azúcar, redes sociales…" 
+             class="flex-1 p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-400" />
+      <button onclick="agregarHabito()" 
+              class="bg-green-500 text-white px-4 py-2 rounded-xl hover:bg-green-600 transition">
+        ¡Iniciar cuenta!
+      </button>
+    </div>
+
+    <!-- Lista de hábitos -->
+    <div id="listaHabitos" class="space-y-4">
+      <!-- Aquí se agregan los hábitos dinámicamente -->
+    </div>
+  </div>
+
+  <script>
+    const inputHabito = document.getElementById('inputHabito');
+    const listaHabitos = document.getElementById('listaHabitos');
+
+    function obtenerHabitos() {
+      const data = localStorage.getItem('habitos');
+      return data ? JSON.parse(data) : [];
+    }
+
+    function guardarHabitos(habitos) {
+      localStorage.setItem('habitos', JSON.stringify(habitos));
+    }
+
+    function agregarHabito() {
+      const nombre = inputHabito.value.trim();
+      if (!nombre) {
+        alert("Escribe el hábito que deseas comenzar a contar.");
+        return;
+      }
+      const habitos = obtenerHabitos();
+      habitos.push({ nombre, fechaInicio: new Date().toISOString() });
+      guardarHabitos(habitos);
+      inputHabito.value = '';
+      mostrarHabitos();
+    }
+
+    function eliminarHabito(index) {
+      const habitos = obtenerHabitos();
+      if (confirm(`¿Eliminar el hábito "${habitos[index].nombre}"?`)) {
+        habitos.splice(index, 1);
+        guardarHabitos(habitos);
+        mostrarHabitos();
+      }
+    }
+
+    function reiniciarHabito(index) {
+      const habitos = obtenerHabitos();
+      if (confirm(`¿Reiniciar la cuenta para "${habitos[index].nombre}"?`)) {
+        habitos[index].fechaInicio = new Date().toISOString();
+        guardarHabitos(habitos);
+        mostrarHabitos();
+      }
+    }
+
+    function formatoTiempo(fechaInicio) {
+      const inicio = new Date(fechaInicio);
+      const ahora = new Date();
+      let ms = ahora - inicio;
+
+      const minutosTotales = Math.floor(ms / (1000 * 60));
+      const horasTotales = Math.floor(ms / (1000 * 60 * 60));
+      const diasTotales = Math.floor(ms / (1000 * 60 * 60 * 24));
+      const semanasTotales = Math.floor(diasTotales / 7);
+      const mesesTotales = Math.floor(diasTotales / 30.44);
+      const añosTotales = Math.floor(diasTotales / 365.25);
+
+      if (minutosTotales < 60) {
+        return `${minutosTotales} minuto${minutosTotales !== 1 ? 's' : ''}`;
+      } else if (horasTotales < 24) {
+        const horas = Math.floor(minutosTotales / 60);
+        const minutos = minutosTotales % 60;
+        return `${horas} hora${horas !== 1 ? 's' : ''}` + 
+               (minutos > 0 ? ` y ${minutos} minuto${minutos !== 1 ? 's' : ''}` : '');
+      } else if (diasTotales < 30) {
+        const dias = diasTotales;
+        const horas = Math.floor((ms % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        return `${dias} día${dias !== 1 ? 's' : ''}` +
+               (horas > 0 ? ` y ${horas} hora${horas !== 1 ? 's' : ''}` : '');
+      } else if (mesesTotales < 12) {
+        const meses = mesesTotales;
+        const dias = diasTotales - Math.floor(meses * 30.44);
+        return `${meses} mes${meses !== 1 ? 'es' : ''}` +
+               (dias > 0 ? ` y ${dias} día${dias !== 1 ? 's' : ''}` : '');
+      } else {
+        const años = añosTotales;
+        const meses = Math.floor((diasTotales - años * 365.25) / 30.44);
+        return `${años} año${años !== 1 ? 's' : ''}` +
+               (meses > 0 ? ` y ${meses} mes${meses !== 1 ? 'es' : ''}` : '');
+      }
+    }
+
+    function mostrarHabitos() {
+      const habitos = obtenerHabitos();
+      listaHabitos.innerHTML = '';
+
+      if (habitos.length === 0) {
+        listaHabitos.innerHTML = '<p class="text-center text-gray-500">No hay hábitos registrados aún.</p>';
+        return;
+      }
+
+      habitos.forEach((habito, index) => {
+        const tiempo = formatoTiempo(habito.fechaInicio);
+        const div = document.createElement('div');
+        div.className = 'bg-gray-50 border border-gray-200 p-4 rounded-xl shadow-sm';
+
+        div.innerHTML = `
+          <div class="flex justify-between items-center">
+            <h2 class="text-lg font-semibold text-gray-700">🕒 ${habito.nombre}</h2>
+            <div class="space-x-2">
+              <button onclick="reiniciarHabito(${index})" class="text-blue-500 text-sm hover:underline">Reiniciar</button>
+              <button onclick="eliminarHabito(${index})" class="text-red-500 text-sm hover:underline">Eliminar</button>
+            </div>
+          </div>
+          <p class="mt-2 text-sm text-gray-600">Tiempo transcurrido: <span class="font-medium text-green-700">${tiempo}</span></p>
+        `;
+        listaHabitos.appendChild(div);
+      });
+    }
+
+    setInterval(mostrarHabitos, 60000); // Actualizar cada minuto
+    window.onload = mostrarHabitos;
+  </script>
+</body>
+</html>

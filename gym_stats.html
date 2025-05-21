@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Progreso de Ejercicios</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-gradient-to-br from-blue-100 to-indigo-100 min-h-screen p-4">
+  <div class="max-w-3xl mx-auto bg-white p-6 rounded-2xl shadow-xl space-y-6">
+    <h1 class="text-3xl font-bold text-center text-gray-800">🏋️‍♂️ Progreso de Ejercicios</h1>
+
+    <!-- Añadir nuevo ejercicio -->
+    <form id="formEjercicio" class="flex flex-col sm:flex-row gap-3">
+      <input id="nombreEjercicio" type="text" placeholder="Nombre del ejercicio"
+        class="flex-1 px-4 py-2 rounded-xl border border-gray-300 focus:ring-2 focus:ring-indigo-400" required>
+      <input id="marcaEjercicio" type="text" placeholder="Marca (kg, tiempo, etc)"
+        class="w-40 px-4 py-2 rounded-xl border border-gray-300 focus:ring-2 focus:ring-indigo-400" required>
+      <button class="bg-indigo-500 text-white px-4 py-2 rounded-xl hover:bg-indigo-600 transition">➕</button>
+    </form>
+
+    <!-- Lista de ejercicios -->
+    <div id="listaEjercicios" class="space-y-4"></div>
+  </div>
+
+  <!-- Modal de gráfica -->
+  <div id="modal" class="fixed inset-0 hidden bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div class="bg-white rounded-xl p-6 max-w-lg w-full shadow-xl relative">
+      <button onclick="cerrarModal()" class="absolute top-2 right-3 text-xl text-gray-600 hover:text-red-500">✖️</button>
+      <h2 id="tituloGrafica" class="text-xl font-bold mb-4 text-center"></h2>
+      <canvas id="graficaProgreso" height="200"></canvas>
+    </div>
+  </div>
+
+  <script>
+    const listaEjercicios = document.getElementById('listaEjercicios');
+    const formEjercicio = document.getElementById('formEjercicio');
+    const nombreInput = document.getElementById('nombreEjercicio');
+    const marcaInput = document.getElementById('marcaEjercicio');
+    const modal = document.getElementById('modal');
+    const tituloGrafica = document.getElementById('tituloGrafica');
+    const ctxGrafica = document.getElementById('graficaProgreso');
+    let chart; // Chart.js instance
+
+    function obtenerDatos() {
+      return JSON.parse(localStorage.getItem('progresoEjercicios') || '[]');
+    }
+
+    function guardarDatos(data) {
+      localStorage.setItem('progresoEjercicios', JSON.stringify(data));
+    }
+
+    function agregarEjercicio(nombre, marca) {
+      const data = obtenerDatos();
+      data.push({
+        nombre,
+        historial: [{ fecha: new Date().toISOString().slice(0, 10), marca }]
+      });
+      guardarDatos(data);
+      renderizarLista();
+    }
+
+    function actualizarMarca(index) {
+      const data = obtenerDatos();
+      const marca = prompt(`Nueva marca para ${data[index].nombre}:`);
+      if (!marca) return;
+      data[index].historial.push({ fecha: new Date().toISOString().slice(0, 10), marca });
+      guardarDatos(data);
+      renderizarLista();
+    }
+
+    function verEstadisticas(index) {
+      const data = obtenerDatos()[index];
+      const fechas = data.historial.map(h => h.fecha);
+      const marcas = data.historial.map(h => parseFloat(h.marca));
+
+      tituloGrafica.textContent = `📈 Progreso de "${data.nombre}"`;
+      modal.classList.remove('hidden');
+
+      if (chart) chart.destroy();
+      chart = new Chart(ctxGrafica, {
+        type: 'line',
+        data: {
+          labels: fechas,
+          datasets: [{
+            label: 'Marca',
+            data: marcas,
+            borderColor: 'rgb(99, 102, 241)',
+            backgroundColor: 'rgba(99, 102, 241, 0.2)',
+            tension: 0.3,
+            fill: true,
+            pointRadius: 5
+          }]
+        },
+        options: {
+          scales: {
+            y: { beginAtZero: false }
+          }
+        }
+      });
+    }
+
+    function cerrarModal() {
+      modal.classList.add('hidden');
+    }
+
+    function renderizarLista() {
+      const data = obtenerDatos();
+      listaEjercicios.innerHTML = '';
+
+      if (data.length === 0) {
+        listaEjercicios.innerHTML = '<p class="text-center text-gray-500">No hay ejercicios aún. Agrega uno arriba.</p>';
+        return;
+      }
+
+      data.forEach((ejercicio, i) => {
+        const ultima = ejercicio.historial[ejercicio.historial.length - 1];
+        const card = document.createElement('div');
+        card.className = 'p-4 rounded-xl border bg-gray-50 shadow-sm flex flex-col sm:flex-row justify-between items-center';
+
+        card.innerHTML = `
+          <div>
+            <h2 class="text-lg font-bold text-indigo-700">${ejercicio.nombre}</h2>
+            <p class="text-gray-600 text-sm">Última marca: <strong>${ultima.marca}</strong> el ${ultima.fecha}</p>
+          </div>
+          <div class="flex gap-3 mt-3 sm:mt-0">
+            <button onclick="actualizarMarca(${i})" class="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600">Actualizar</button>
+            <button onclick="verEstadisticas(${i})" class="px-3 py-1 bg-indigo-500 text-white rounded hover:bg-indigo-600">Ver estadísticas</button>
+          </div>
+        `;
+
+        listaEjercicios.appendChild(card);
+      });
+    }
+
+    formEjercicio.onsubmit = (e) => {
+      e.preventDefault();
+      agregarEjercicio(nombreInput.value.trim(), marcaInput.value.trim());
+      nombreInput.value = '';
+      marcaInput.value = '';
+    }
+
+    window.onload = renderizarLista;
+  </script>
+</body>
+</html>
+

@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Listas Diarias</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gradient-to-br from-indigo-100 to-blue-100 min-h-screen p-4">
+  <div class="max-w-3xl mx-auto bg-white p-6 rounded-2xl shadow-xl space-y-6">
+    <h1 class="text-3xl font-bold text-center text-gray-800">📝 Mis Listas Diarias</h1>
+
+    <!-- Crear nueva lista -->
+    <div class="flex flex-col sm:flex-row gap-3">
+      <input id="nuevaListaInput" type="text" placeholder="Nombre de la nueva lista"
+        class="flex-1 px-4 py-2 rounded-xl border border-gray-300 focus:ring-2 focus:ring-indigo-400">
+      <button onclick="crearLista()" class="bg-indigo-500 text-white px-4 py-2 rounded-xl hover:bg-indigo-600 transition">
+        Crear lista
+      </button>
+    </div>
+
+    <!-- Contenedor de listas -->
+    <div id="contenedorListas" class="space-y-6"></div>
+  </div>
+
+  <script>
+    const contenedorListas = document.getElementById('contenedorListas');
+    const nuevaListaInput = document.getElementById('nuevaListaInput');
+
+    function obtenerListas() {
+      const data = localStorage.getItem('listasDiarias');
+      return data ? JSON.parse(data) : [];
+    }
+
+    function guardarListas(listas) {
+      localStorage.setItem('listasDiarias', JSON.stringify(listas));
+    }
+
+    function crearLista() {
+      const nombre = nuevaListaInput.value.trim();
+      if (!nombre) return alert("Debes ponerle un nombre a la lista.");
+      const listas = obtenerListas();
+      listas.push({ nombre, items: [] });
+      guardarListas(listas);
+      nuevaListaInput.value = '';
+      renderizarListas();
+    }
+
+    function eliminarLista(index) {
+      const listas = obtenerListas();
+      if (confirm(`¿Eliminar la lista "${listas[index].nombre}"?`)) {
+        listas.splice(index, 1);
+        guardarListas(listas);
+        renderizarListas();
+      }
+    }
+
+    function agregarItem(index, texto) {
+      const listas = obtenerListas();
+      listas[index].items.push({
+        texto,
+        checked: false,
+        lastCheckedDate: null
+      });
+      guardarListas(listas);
+      renderizarListas();
+    }
+
+    function eliminarItem(indexLista, indexItem) {
+      const listas = obtenerListas();
+      listas[indexLista].items.splice(indexItem, 1);
+      guardarListas(listas);
+      renderizarListas();
+    }
+
+    function toggleItem(indexLista, indexItem) {
+      const listas = obtenerListas();
+      const item = listas[indexLista].items[indexItem];
+      item.checked = !item.checked;
+      item.lastCheckedDate = item.checked ? new Date().toISOString().slice(0, 10) : null;
+      guardarListas(listas);
+      renderizarListas();
+    }
+
+    function reiniciarCheckSiEsNuevoDia() {
+      const hoy = new Date().toISOString().slice(0, 10);
+      const listas = obtenerListas();
+      let actualizado = false;
+
+      listas.forEach(lista => {
+        lista.items.forEach(item => {
+          if (item.checked && item.lastCheckedDate !== hoy) {
+            item.checked = false;
+            item.lastCheckedDate = null;
+            actualizado = true;
+          }
+        });
+      });
+
+      if (actualizado) guardarListas(listas);
+    }
+
+    function moverLista(index, direccion) {
+      const listas = obtenerListas();
+      const nuevaPos = index + direccion;
+      if (nuevaPos < 0 || nuevaPos >= listas.length) return;
+
+      [listas[index], listas[nuevaPos]] = [listas[nuevaPos], listas[index]];
+      guardarListas(listas);
+      renderizarListas();
+    }
+
+    function renderizarListas() {
+      reiniciarCheckSiEsNuevoDia();
+      const listas = obtenerListas();
+      contenedorListas.innerHTML = '';
+
+      if (listas.length === 0) {
+        contenedorListas.innerHTML = '<p class="text-center text-gray-500">No hay listas todavía. ¡Crea una arriba!</p>';
+        return;
+      }
+
+      listas.forEach((lista, i) => {
+        const divLista = document.createElement('div');
+        divLista.className = 'bg-gray-50 rounded-xl p-4 border border-gray-200 shadow-sm';
+
+        const htmlItems = lista.items.map((item, j) => `
+          <div class="flex items-center gap-3 mb-2">
+            <input type="checkbox" ${item.checked ? 'checked' : ''} 
+                   onchange="toggleItem(${i}, ${j})"
+                   class="w-5 h-5 accent-indigo-500">
+            <span class="${item.checked ? 'line-through text-gray-400' : 'text-gray-700'} flex-1">${item.texto}</span>
+            <button onclick="eliminarItem(${i}, ${j})" 
+                    class="text-red-500 hover:underline text-sm">Eliminar</button>
+          </div>
+        `).join('');
+
+        divLista.innerHTML = `
+          <div class="flex justify-between items-center mb-3">
+            <h2 class="text-xl font-semibold text-indigo-700">${lista.nombre}</h2>
+            <div class="flex gap-2">
+              <button onclick="moverLista(${i}, -1)" class="text-gray-600 hover:text-indigo-500 text-sm">⬆️</button>
+              <button onclick="moverLista(${i}, 1)" class="text-gray-600 hover:text-indigo-500 text-sm">⬇️</button>
+              <button onclick="eliminarLista(${i})" class="text-red-500 text-sm hover:underline">Eliminar</button>
+            </div>
+          </div>
+          <div class="space-y-2">
+            ${htmlItems || '<p class="text-gray-400">No hay ítems todavía.</p>'}
+          </div>
+          <form onsubmit="event.preventDefault(); const input = this.querySelector('input'); agregarItem(${i}, input.value); input.value='';" class="mt-4 flex gap-2">
+            <input type="text" placeholder="Agregar ítem..." 
+                   class="flex-1 px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-400" required>
+            <button class="bg-indigo-500 text-white px-3 py-2 rounded-lg hover:bg-indigo-600">Añadir</button>
+          </form>
+        `;
+
+        contenedorListas.appendChild(divLista);
+      });
+    }
+
+    window.onload = renderizarListas;
+  </script>
+</body>
+</html>
+
