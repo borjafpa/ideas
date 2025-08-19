@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Progreso de Ejercicios</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-gradient-to-br from-blue-100 to-indigo-100 min-h-screen p-4">
+  <div class="max-w-4xl mx-auto bg-white p-6 rounded-2xl shadow-xl space-y-6">
+    <h1 class="text-3xl font-bold text-center text-gray-800">🏋️‍♂️ Progreso de Ejercicios</h1>
+
+    <!-- Añadir nuevo ejercicio -->
+    <form id="formEjercicio" class="flex flex-col sm:flex-row gap-3">
+      <input id="nombreEjercicio" type="text" placeholder="Nombre del ejercicio"
+        class="flex-1 px-4 py-2 rounded-xl border border-gray-300 focus:ring-2 focus:ring-indigo-400" required>
+      <input id="marcaEjercicio" type="text" placeholder="Marca (kg, tiempo, etc.)"
+        class="w-full sm:w-48 px-4 py-2 rounded-xl border border-gray-300 focus:ring-2 focus:ring-indigo-400" required>
+      <button class="bg-indigo-500 text-white px-4 py-2 rounded-xl hover:bg-indigo-600 transition">➕</button>
+    </form>
+
+    <!-- Lista de ejercicios -->
+    <div id="listaEjercicios" class="space-y-4"></div>
+
+    <!-- Gráfico de ejercicios diarios -->
+    <div class="mt-10">
+      <h2 class="text-xl font-bold text-center mb-4">📊 Ejercicios completados por día</h2>
+      <canvas id="graficoDiario" height="200"></canvas>
+    </div>
+  </div>
+
+  <!-- Modal de gráfica por ejercicio -->
+  <div id="modal" class="fixed inset-0 hidden bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div class="bg-white rounded-xl p-6 max-w-lg w-full shadow-xl relative">
+      <button onclick="cerrarModal()" class="absolute top-2 right-3 text-xl text-gray-600 hover:text-red-500">✖️</button>
+      <h2 id="tituloGrafica" class="text-xl font-bold mb-4 text-center"></h2>
+      <canvas id="graficaProgreso" height="200"></canvas>
+    </div>
+  </div>
+
+  <script>
+    const listaEjercicios = document.getElementById('listaEjercicios');
+    const formEjercicio = document.getElementById('formEjercicio');
+    const nombreInput = document.getElementById('nombreEjercicio');
+    const marcaInput = document.getElementById('marcaEjercicio');
+    const modal = document.getElementById('modal');
+    const tituloGrafica = document.getElementById('tituloGrafica');
+    const ctxGrafica = document.getElementById('graficaProgreso');
+    const ctxDiario = document.getElementById('graficoDiario');
+
+    let chart;       // Chart.js (por ejercicio)
+    let chartDiario; // Chart.js (diario)
+
+    /* -------------------------
+       Utilidades de almacenamiento
+    -------------------------- */
+    function obtenerDatosRaw() {
+      try {
+        const raw = localStorage.getItem('progresoEjercicios');
+        return raw ? JSON.parse(raw) : [];
+      } catch {
+        return [];
+      }
+    }
+
+    function normalizarDatos(data) {
+      // Garantiza que todos los ejercicios tengan las propiedades necesarias
+      if (!Array.isArray(data)) return [];
+      data.forEach(ej => {
+        if (!Array.isArray(ej.historial)) ej.historial = [];
+        if (!Array.isArray(ej.checks)) ej.checks = []; // <- clave para compatibilidad
+      });
+      return data;
+    }
+
+    function obtenerDatos() {
+      const normalizados = normalizarDatos(obtenerDatosRaw());
+      // Persistimos normalizados (migra datos antiguos)
+      localStorage.setItem('progresoEjercicios', JSON.stringify(normalizados));
+      return normalizados;
+    }
+
+    function guardarDatos(data) {
+      localStorage.setItem('progresoEjercicios', JSON.stringify(normalizarDatos(data)));
+    }
+
+    /* -------------------------
+       Alta / actualización
+    -------------------------- */
+    function agregarEjercicio(nombre, marca) {
+      const data = obtenerDatos();
+      data.push({
+        nombre: nombre.trim(),
+        historial: [{ fecha: new Date().toISOString().slice(0, 10), marca: String(marca).trim() }],
+        checks: [] // registros de "hecho" (se guardan como eventos históricos)
+      });
+      guardarDatos(data);
+      renderizarTodo();
+    }
+
+    function actualizarMarca(index) {
+      const data = obtenerDatos();
+      const marca = prompt(`Nueva marca para "${data[index].nombre}":`);
+      if (!marca) return;
+      data[index].historial.push({ fecha: new Date().toISOString().slice(0, 10), marca: String(marca).trim() });
+      guardarDatos(data);
+      renderizarTodo();
+    }
+
+    /* -------------------------
+       Estadísticas por ejercicio
+    -------------------------- */
+    function verEstadisticas(index) {
+      const data = obtenerDatos()[index];
+      const fechas = data.historial.map(h => h.fecha);
+
+      // Intentamos convertir marcas a números; ignoramos entradas no numéricas para la gráfica
+      const pares = data.historial
+        .map(h => ({ fecha: h.fecha, valor: parseFloat(String(h.marca).replace(',', '.')) }))
+        .filter(p => Number.isFinite(p.valor));
+
+      const labels = pares.map(p => p.fecha);
+      const valores = pares.map(p => p.valor);
+
+      tituloGrafica.textContent = `📈 Progreso de "${data.nombre}"`;
+      modal.classList.remove('hidden');
+
+      if (chart) chart.destroy();
+      chart = new Chart(ctxGrafica, {
+        type: 'line',
+        data: {
+          labels: labels.length ? labels : fechas,
+          datasets: [{
+            label: 'Marca (numérica)',
+            data: valores.length ? valores : new Array(fechas.length).fill(null),
+            borderColor: 'rgb(99, 102, 241)',
+            backgroundColor: 'rgba(99, 102, 241, 0.2)',
+            tension: 0.3,
+            fill: true,
+            pointRadius: 4
+          }]
+        },
+        options: {
+          plugins: {
+            tooltip: { intersect: false, mode: 'index' }
+          },
+          scales: {
+            y: { beginAtZero: false }
+          }
+        }
+      });
+    }
+
+    function cerrarModal() {
+      modal.classList.add('hidden');
+    }
+
+    /* -------------------------
+       Check "Hecho hoy" (12h)
+    -------------------------- */
+    const DOCE_HORAS_MS = 12 * 60 * 60 * 1000;
+
+    function estaActivoUltimas12h(ejercicio) {
+      const checks = Array.isArray(ejercicio.checks) ? ejercicio.checks : [];
+      if (checks.length === 0) return false;
+      const ultimo = checks[checks.length - 1];
+      return (Date.now() - new Date(ultimo.fecha).getTime()) < DOCE_HORAS_MS;
+    }
+
+    function toggleCheck(index) {
+      const data = obtenerDatos();
+      const ej = data[index];
+      const checks = Array.isArray(ej.checks) ? ej.checks : (ej.checks = []);
+      const activo = estaActivoUltimas12h(ej);
+
+      if (activo) {
+        // Si está activo y el usuario desmarca, eliminamos el último registro (anulamos)
+        checks.pop();
+      } else {
+        // Añadimos un evento de hecho (queda para el histórico)
+        checks.push({ fecha: new Date().toISOString() });
+      }
+
+      guardarDatos(data);
+      renderizarTodo();
+    }
+
+    /* -------------------------
+       Gráfico diario (conteo por día)
+    -------------------------- */
+    function renderizarGraficoDiario(data) {
+  // Fechas únicas de todos los checks
+  const fechasSet = new Set();
+  data.forEach(ej => {
+    const checks = Array.isArray(ej.checks) ? ej.checks : [];
+    checks.forEach(c => fechasSet.add(c.fecha.slice(0, 10)));
+  });
+  const fechas = Array.from(fechasSet).sort();
+
+  // Generamos un dataset por ejercicio
+  const datasets = data.map((ej, idx) => {
+    const checks = Array.isArray(ej.checks) ? ej.checks : [];
+    const fechasEj = checks.map(c => c.fecha.slice(0, 10));
+
+    return {
+      label: ej.nombre,
+      data: fechas.map(f => fechasEj.filter(fe => fe === f).length),
+      backgroundColor: `hsl(${(idx * 60) % 360}, 70%, 60%)` // colores distintos
+    };
+  });
+
+  if (chartDiario) chartDiario.destroy();
+  chartDiario = new Chart(ctxDiario, {
+    type: 'bar',
+    data: {
+      labels: fechas,
+      datasets: datasets
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        tooltip: {
+          mode: 'index',
+          intersect: false
+        },
+        legend: {
+          position: 'top'
+        }
+      },
+      scales: {
+        x: { stacked: true },
+        y: { stacked: true, beginAtZero: true, ticks: { precision: 0 } }
+      }
+    }
+  });
+}
+
+
+    /* -------------------------
+       Render principal
+    -------------------------- */
+    function renderizarLista() {
+      const data = obtenerDatos();
+      listaEjercicios.innerHTML = '';
+
+      if (data.length === 0) {
+        listaEjercicios.innerHTML = '<p class="text-center text-gray-500">No hay ejercicios aún. Agrega uno arriba.</p>';
+        return;
+      }
+
+      data.forEach((ejercicio, i) => {
+        const ultima = ejercicio.historial[ejercicio.historial.length - 1];
+        const activo = estaActivoUltimas12h(ejercicio);
+
+        const card = document.createElement('div');
+        card.className = 'p-4 rounded-xl border bg-gray-50 shadow-sm flex flex-col sm:flex-row justify-between items-center gap-3';
+
+        card.innerHTML = `
+          <div class="w-full sm:w-auto">
+            <h2 class="text-lg font-bold text-indigo-700">${ejercicio.nombre}</h2>
+            <p class="text-gray-600 text-sm">Última marca: <strong>${ultima.marca}</strong> el ${ultima.fecha}</p>
+            <label class="flex items-center gap-2 mt-2 text-sm">
+              <input type="checkbox" ${activo ? 'checked' : ''} onchange="toggleCheck(${i})" class="w-4 h-4 accent-green-600">
+              Hecho hoy (se desmarca en 12h)
+            </label>
+          </div>
+          <div class="flex gap-3 w-full sm:w-auto justify-end">
+            <button type="button" onclick="actualizarMarca(${i})" class="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600">Actualizar</button>
+            <button type="button" onclick="verEstadisticas(${i})" class="px-3 py-1 bg-indigo-500 text-white rounded hover:bg-indigo-600">Ver estadísticas</button>
+          </div>
+        `;
+
+        listaEjercicios.appendChild(card);
+      });
+    }
+
+    function renderizarTodo() {
+      const data = obtenerDatos();
+      renderizarLista();
+      renderizarGraficoDiario(data);
+    }
+
+    /* -------------------------
+       Eventos
+    -------------------------- */
+    formEjercicio.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const nombre = nombreInput.value.trim();
+      const marca = marcaInput.value.trim();
+      if (!nombre || !marca) return;
+      agregarEjercicio(nombre, marca);
+      nombreInput.value = '';
+      marcaInput.value = '';
+    });
+
+    // Inicial
+    window.onload = renderizarTodo;
+  </script>
+</body>
+</html>
+
